@@ -1,0 +1,25 @@
+export type {
+  Vehicle,
+  ApplicabilityField,
+  SourceDocument,
+  SourcePassage,
+  Citation,
+  SourceConflict,
+  EvidenceItem,
+  DiagnosticAnswer,
+  Question,
+  VisualFocus,
+  Hypothesis,
+  EvidenceLink,
+  RecommendedTest,
+  Procedure,
+  ProcedureStep,
+  DiagnosticSession,
+  DiagnosticUpdate,
+  SafetyGate,
+  Outcome,
+  ModelExplanation,
+  MediaObservationOutput,
+} from "@/lib/validation/schemas";
+
+export { APPLICABILITY_FIELDS } from "@/lib/validation/schemas";

@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets
+*.pem
+*.key
+service-account*.json
+
+# Licensed source material — never commit imported manuals/forum content
+data/manuals/
+data/sources/
+data/raw/
+**/*.pdf
+**/manuals/
+*.epc
+*.tis
+
+# Databases
+*.sqlite
+*.duckdb
+pgdata/
+
+# Python (services/ingestion)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
