@@ -1,0 +1,6 @@
+# Only needed for PDF input. Plain-text input requires nothing beyond the
+# standard library.
+pypdf>=5.1.0
+
+# Uncomment if you extend ingest.py to write directly to Postgres.
+# psycopg[binary]>=3.2.0
