@@ -1,0 +1,139 @@
+{
+  "$comment": "Diagnostic fixtures for the supported MVP branch (hard starting + white/grey smoke on 1HZ / 1HD-T). These describe EXPECTED SYSTEM BEHAVIOUR, not Toyota specifications. No torque value, tolerance, tool number or factory procedure appears anywhere in this file.",
+  "version": 1,
+  "cases": [
+    {
+      "id": "case-air-ingress-primer-helps",
+      "description": "Normal cranking, long crank to start, priming clearly helps, roughness clears quickly.",
+      "vehicle": { "series": "80", "engineCode": "1HD-T" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "normal" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" },
+        { "questionId": "smoke-color", "value": "white" },
+        { "questionId": "recent-work", "value": "after-fuel-work" },
+        { "questionId": "primer-effect", "value": "improves" },
+        { "questionId": "smooths-after-start", "value": "smooths-quickly" }
+      ],
+      "expect": {
+        "topHypothesisId": "air-ingress",
+        "rankedAbove": [["air-ingress", "low-compression"], ["air-ingress", "injector-fault"]],
+        "specificationLocked": true,
+        "noConfirmedStatus": true,
+        "recommendedTestId": "prime-and-inspect-low-pressure"
+      },
+      "rationale": "Recent fuel-system work plus a clear response to priming is the cheapest, highest-yield explanation to eliminate first."
+    },
+    {
+      "id": "case-glow-plug-cold-only",
+      "description": "Cold-start only complaint, normal cranking, white smoke that clears once warm, priming makes no difference.",
+      "vehicle": { "series": "70", "engineCode": "1HZ" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "normal" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" },
+        { "questionId": "smoke-color", "value": "white" },
+        { "questionId": "smoke-when-warm", "value": "clears-when-warm" },
+        { "questionId": "recent-work", "value": "no-recent-work" },
+        { "questionId": "primer-effect", "value": "no-change" },
+        { "questionId": "cold-vs-warm", "value": "worse-cold" }
+      ],
+      "expect": {
+        "topHypothesisIn": ["glow-plug-fault", "injection-timing"],
+        "rankedAbove": [["glow-plug-fault", "fuel-restriction"]],
+        "specificationLocked": true,
+        "noConfirmedStatus": true,
+        "recommendedTestId": "glow-plug-resistance"
+      },
+      "rationale": "A cold-only complaint that clears when warm points at starting aids before anything requiring the pump to be opened."
+    },
+    {
+      "id": "case-timing-conflict-locked",
+      "description": "Timing is the leading suspicion, but the vehicle is only partially identified, so competing published values cannot be separated.",
+      "vehicle": { "series": "80", "engineCode": "1HD-T" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "normal" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" },
+        { "questionId": "smoke-color", "value": "white" },
+        { "questionId": "smoke-when-warm", "value": "continues-when-warm" },
+        { "questionId": "recent-work", "value": "after-other-work" },
+        { "questionId": "primer-effect", "value": "no-change" },
+        { "questionId": "timing-measured", "value": "never-measured" }
+      ],
+      "evidence": [
+        { "type": "measurement", "measurement": { "key": "plunger-stroke", "value": 0.9, "unit": "mm" } }
+      ],
+      "expect": {
+        "specificationLocked": true,
+        "conflictSubject": "injection-pump-plunger-stroke-at-tdc",
+        "conflictResolutionStatus": "unresolved",
+        "hypothesisStatus": { "injection-timing": "partially-tested" },
+        "measurementInterpreted": false,
+        "safetyGateIds": [
+          "gate-specification-locked",
+          "gate-measurement-uninterpretable",
+          "gate-placeholder-sources"
+        ],
+        "noConfirmedStatus": true
+      },
+      "rationale": "The measurement is real work by the user and must be preserved, but comparing it to a value that may not apply to this vehicle would be worse than saying nothing."
+    },
+    {
+      "id": "case-media-does-not-rank",
+      "description": "A cold-start video is added. It must not change the ranking.",
+      "vehicle": { "series": "80", "engineCode": "1HD-T" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "normal" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" }
+      ],
+      "evidence": [
+        {
+          "type": "video",
+          "userDescription": "Cold start from the rear, white vapour for about a minute.",
+          "captureConditions": { "engineTemperature": "cold", "relationToRepair": "before" }
+        }
+      ],
+      "expect": {
+        "rankingUnchangedWithoutEvidence": true,
+        "evidenceCaptured": true,
+        "noConfirmedStatus": true
+      },
+      "rationale": "Video establishes what was observed and under what conditions. It cannot establish an internal mechanical cause."
+    },
+    {
+      "id": "case-slow-crank-electrical-first",
+      "description": "Very slow cranking. The combustion branch must not be pursued before the electrical cause is dealt with.",
+      "vehicle": { "series": "70", "engineCode": "1HZ" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "very-slow" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" }
+      ],
+      "expect": {
+        "notTopHypothesisIds": ["injection-timing", "low-compression"],
+        "noConfirmedStatus": true
+      },
+      "rationale": "Cranking speed is a precondition for interpreting almost every other starting symptom."
+    },
+    {
+      "id": "case-unidentified-vehicle-blocks",
+      "description": "Symptoms are described before the vehicle is identified.",
+      "vehicle": { "series": "unknown", "engineCode": "unknown" },
+      "answers": [
+        { "questionId": "complaint-category", "value": "hard-start" },
+        { "questionId": "cranking-speed", "value": "normal" },
+        { "questionId": "does-it-start", "value": "starts-after-long-crank" }
+      ],
+      "expect": {
+        "vehicleIdentified": false,
+        "recommendedTest": null,
+        "specificationLocked": true,
+        "safetyGateIds": ["gate-vehicle-unidentified"],
+        "noConfirmedStatus": true
+      },
+      "rationale": "Nothing specification-dependent may open before series and engine are known."
+    }
+  ]
+}
