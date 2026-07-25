@@ -5,11 +5,27 @@ import { proceduresRouter } from "@/routes/procedures";
 import { sessionsRouter } from "@/routes/sessions";
 
 const PORT = Number(process.env.PORT ?? 4000);
-const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+
+// If CORS_ORIGIN is set, it's a comma-separated allow-list (exact match).
+// Otherwise, in dev, allow any localhost/127.0.0.1 port — Next.js picks the
+// next free port when its default is taken, so pinning to one exact origin
+// breaks the moment something else is already running on 3000.
+const explicitOrigins = process.env.CORS_ORIGIN?.split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/;
 
 const app = express();
 
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true); // non-browser clients (curl, tests)
+      if (explicitOrigins) return callback(null, explicitOrigins.includes(origin));
+      callback(null, LOCALHOST_ORIGIN.test(origin));
+    },
+  }),
+);
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req, res) => {
