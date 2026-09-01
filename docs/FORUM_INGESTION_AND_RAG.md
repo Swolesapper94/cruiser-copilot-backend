@@ -176,6 +176,18 @@ retained and reviewed.
 - an active source with recorded policy and robots review
 - same-host seed URLs inside `allowed_path_prefixes`
 
+The request body names an allow-listed source rather than supplying network
+configuration:
+
+```json
+{
+  "source_id": "landcruiserclub",
+  "seed_urls": [
+    "https://www.landcruiserclub.net/community/threads/example.123/"
+  ]
+}
+```
+
 The runtime applies the stricter of the source and environment request delays
 and the smaller of their page budgets. Responses return parsed structure and
 verification results but never echo raw page bodies through the API.
@@ -191,8 +203,11 @@ npm run evidence -- parse ./snapshot.html https://forum.example/threads/x.1
 
 ## Storage
 
-The in-memory `EvidenceStore` runs the complete pipeline and is enough for a
-curated corpus. Move to `packages/database/evidence-schema.sql` (Supabase or any
-Postgres with `pgvector`) when you need durable snapshots, indexes at scale, real
-embeddings, or a review queue that survives a restart. The store interface mirrors
-the SQL model one-for-one so callers do not change.
+The in-memory `EvidenceStore` runs the complete pipeline. Set
+`EVIDENCE_STORE_PATH` to atomically persist validated extraction payloads and
+human approvals for a curated, single-process corpus. Approved evidence is
+re-published into retrieval after restart.
+
+Move to `packages/database/evidence-schema.sql` (Supabase or any Postgres with
+`pgvector`) when you need durable HTML snapshots, concurrent workers, indexes at
+scale, real embeddings, or a review queue operated by more than one process.

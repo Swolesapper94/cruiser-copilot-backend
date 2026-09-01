@@ -8,16 +8,39 @@ import {
 } from "@/lib/config/env";
 import {
   EXTRACTION_SCHEMA_VERSION,
+  FORUM_SOURCE_REGISTRY,
   ForumCrawler,
-  crawlSourceSchema,
+  evidenceCatalog,
+  registeredForumSource,
 } from "@/lib/evidence";
 
 const crawlRequestSchema = z.object({
-  source: crawlSourceSchema,
+  source_id: z.string().min(1),
   seed_urls: z.array(z.string().url()).min(1).max(25),
 });
 
+const approvalSchema = z.object({ reviewer: z.string().min(2).max(120) });
+
 export const ingestionRouter = Router();
+
+ingestionRouter.get("/forum/sources", (_req, res) => {
+  res.json({
+    sources: FORUM_SOURCE_REGISTRY.map((source) => ({
+      id: source.id,
+      name: source.crawl.name,
+      priority: source.priority,
+      adapter: source.adapter,
+      rationale: source.rationale,
+      policy_summary: source.policySummary,
+      base_url: source.crawl.base_url,
+      terms_url: source.termsUrl,
+      robots_url: source.robotsUrl,
+      terms_review_status: source.crawl.terms_review_status,
+      robots_reviewed_at: source.crawl.robots_reviewed_at,
+      active: source.crawl.active,
+    })),
+  });
+});
 
 ingestionRouter.get("/forum/schema", (_req, res) => {
   res.json({
@@ -86,14 +109,23 @@ ingestionRouter.post("/forum/crawl", async (req, res, next) => {
   }
 
   try {
+    const registered = registeredForumSource(parsed.data.source_id);
+    if (!registered) {
+      res.status(404).json({ error: { code: "forum_source_not_registered" } });
+      return;
+    }
+    if (registered.adapter === "unsupported") {
+      res.status(409).json({ error: { code: "forum_adapter_not_available" } });
+      return;
+    }
     const source = {
-      ...parsed.data.source,
+      ...registered.crawl,
       request_delay_ms: Math.max(
-        parsed.data.source.request_delay_ms,
+        registered.crawl.request_delay_ms,
         env.INGESTION_REQUEST_DELAY_MS,
       ),
       max_pages_per_run: Math.min(
-        parsed.data.source.max_pages_per_run,
+        registered.crawl.max_pages_per_run,
         env.INGESTION_MAX_PAGES_PER_RUN,
       ),
     };
@@ -123,4 +155,58 @@ ingestionRouter.post("/forum/crawl", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+ingestionRouter.post("/extractions", async (req, res, next) => {
+  if (!ingestionAdminAuthorized(req.header("authorization"))) {
+    res.status(401).json({ error: { code: "ingestion_admin_required" } });
+    return;
+  }
+  try {
+    const result = await evidenceCatalog.ingest(req.body);
+    res.status(result.ok ? 201 : 422).json({
+      ok: result.ok,
+      document_id: result.normalized?.documentId,
+      errors: result.errors,
+      warnings: result.warnings,
+      review_flags: result.reviewFlags,
+      held_for_review: result.heldForReview,
+      chunks: result.chunks.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+ingestionRouter.post("/documents/:id/approve", async (req, res, next) => {
+  if (!ingestionAdminAuthorized(req.header("authorization"))) {
+    res.status(401).json({ error: { code: "ingestion_admin_required" } });
+    return;
+  }
+  const parsed = approvalSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { code: "invalid_approval" } });
+    return;
+  }
+  try {
+    const approved = await evidenceCatalog.approve(req.params.id, parsed.data.reviewer);
+    if (!approved) {
+      res.status(404).json({ error: { code: "evidence_document_not_found" } });
+      return;
+    }
+    res.json({ approved: true, document_id: req.params.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+ingestionRouter.get("/status", (req, res) => {
+  if (!ingestionAdminAuthorized(req.header("authorization"))) {
+    res.status(401).json({ error: { code: "ingestion_admin_required" } });
+    return;
+  }
+  res.json({
+    documents: evidenceCatalog.store.summaries(),
+    open_review_flags: evidenceCatalog.store.openReviewFlags(),
+  });
 });

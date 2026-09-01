@@ -1,16 +1,24 @@
 import { Router, type Response } from "express";
 import {
   buildPayload,
+  bearerToken,
   errorResult,
   mutateSession,
   parseBody,
   withSession,
   type ApiResult,
 } from "@/lib/api/handlers";
-import { mediaAnalysisAvailable, uploadLimits } from "@/lib/config/env";
-import { questionById } from "@/lib/diagnostic-policy";
+import { uploadLimits } from "@/lib/config/env";
+import { nextQuestionFor, questionById } from "@/lib/diagnostic-policy";
+import { testById } from "@/lib/diagnostic-policy/tests-catalog";
+import { PROCEDURES } from "@/lib/procedures";
 import { seriesForModelCode } from "@/lib/retrieval";
-import { createId, newSession, sessionStore } from "@/lib/store";
+import {
+  createId,
+  createSessionAccess,
+  newSession,
+  sessionStore,
+} from "@/lib/store";
 import {
   createSessionRequestSchema,
   patchVehicleRequestSchema,
@@ -24,6 +32,9 @@ import type { EvidenceItem } from "@/types";
 export const sessionsRouter = Router();
 
 const MEDIA_TYPES = new Set(["photo", "video", "audio"]);
+const VALID_STEP_IDS = new Set(
+  PROCEDURES.flatMap((procedure) => procedure.steps.map((step) => step.id)),
+);
 
 function send(res: Response, result: ApiResult) {
   res.status(result.status).json(result.body);
@@ -40,20 +51,33 @@ sessionsRouter.post("/", async (req, res) => {
   if (!parsed.ok) return send(res, parsed.result);
 
   const session = newSession(createId("ses"), parsed.data.complaint ?? "");
-  await sessionStore.create(session);
+  const access = createSessionAccess();
+  await sessionStore.create(session, access.tokenHash);
 
-  res.status(201).json(await buildPayload(session));
+  res.status(201).json({
+    ...(await buildPayload(session)),
+    sessionAccessToken: access.accessToken,
+  });
 });
 
 sessionsRouter.get("/:id", async (req, res) => {
-  const result = await withSession(req.params.id, async (session) => ({
+  const result = await withSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    async (session) => ({
     status: 200,
     body: await buildPayload(session),
-  }));
+    }),
+  );
   send(res, result);
 });
 
 sessionsRouter.delete("/:id", async (req, res) => {
+  const authorized = await sessionStore.authorize(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+  );
+  if (!authorized) return send(res, errorResult(404, "session_not_found"));
   const deleted = await sessionStore.delete(req.params.id);
   if (!deleted) return send(res, errorResult(404, "session_not_found"));
   res.status(204).end();
@@ -65,7 +89,17 @@ sessionsRouter.patch("/:id/vehicle", async (req, res) => {
 
   const patch = parsed.data;
 
-  const result = await mutateSession(req.params.id, (session) => {
+  if (
+    (patch.manufacturer && patch.manufacturer !== "Toyota") ||
+    (patch.modelName && patch.modelName !== "Land Cruiser")
+  ) {
+    return send(res, errorResult(422, "unsupported_vehicle"));
+  }
+
+  const result = await mutateSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    (session) => {
     const merged = { ...session.vehicle, ...stripUndefined(patch) };
 
     // A model code implies its series. Inferred values are labelled as such.
@@ -95,7 +129,8 @@ sessionsRouter.patch("/:id/vehicle", async (req, res) => {
           : merged.identificationConfidence,
       },
     };
-  });
+    },
+  );
   send(res, result);
 });
 
@@ -106,12 +141,25 @@ sessionsRouter.post("/:id/answers", async (req, res) => {
   const question = questionById(parsed.data.questionId);
   if (!question) return send(res, errorResult(422, "unknown_question"));
 
+  const authorized = await sessionStore.authorize(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+  );
+  if (!authorized) return send(res, errorResult(404, "session_not_found"));
+  const currentQuestion = nextQuestionFor(authorized);
+  if (currentQuestion?.id !== parsed.data.questionId) {
+    return send(res, errorResult(409, "answer_not_current"));
+  }
+
   const allowed = question.options.map((option) => option.value);
   if (allowed.length > 0 && !allowed.includes(parsed.data.value)) {
     return send(res, errorResult(422, "invalid_answer_value"));
   }
 
-  const result = await mutateSession(req.params.id, (session) => ({
+  const result = await mutateSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    (session) => ({
     ...session,
     answers: [
       ...session.answers.filter(
@@ -124,7 +172,8 @@ sessionsRouter.post("/:id/answers", async (req, res) => {
         answeredAt: new Date().toISOString(),
       },
     ],
-  }));
+    }),
+  );
   send(res, result);
 });
 
@@ -135,6 +184,10 @@ sessionsRouter.post("/:id/evidence", async (req, res) => {
   const body = parsed.data;
   const isMedia = MEDIA_TYPES.has(body.type);
 
+  if (isMedia && body.allowModelAnalysis) {
+    return send(res, errorResult(409, "media_transport_not_configured"));
+  }
+
   if (isMedia) {
     if (body.sizeBytes && body.sizeBytes > uploadLimits.maxUploadBytes) {
       return send(res, errorResult(413, "file_too_large"));
@@ -142,16 +195,18 @@ sessionsRouter.post("/:id/evidence", async (req, res) => {
     if (body.mimeType && !uploadLimits.allowedMimeTypes.includes(body.mimeType)) {
       return send(res, errorResult(415, "unsupported_media_type"));
     }
+    if (
+      body.type === "video" &&
+      body.durationSeconds &&
+      body.durationSeconds > uploadLimits.maxVideoSeconds
+    ) {
+      return send(res, errorResult(413, "video_too_long"));
+    }
   }
 
   if (body.type === "measurement" && !body.measurement) {
     return send(res, errorResult(422, "measurement_required"));
   }
-
-  // Media is only ever described, never diagnosed, and only when the owner
-  // explicitly opted in and a vision model is actually configured.
-  const analysisPermitted =
-    isMedia && body.allowModelAnalysis && mediaAnalysisAvailable();
 
   const item: EvidenceItem = {
     id: createId("evd"),
@@ -159,7 +214,7 @@ sessionsRouter.post("/:id/evidence", async (req, res) => {
     userDescription: body.userDescription,
     machineObservation: undefined,
     observationLimit: isMedia
-      ? "Media can show colour, location and behaviour. It cannot establish an internal mechanical cause."
+      ? "Only filename, type and size metadata were recorded. The selected file was not uploaded or analyzed."
       : undefined,
     captureConditions: {
       engineTemperature: body.captureConditions?.engineTemperature ?? "unknown",
@@ -174,23 +229,26 @@ sessionsRouter.post("/:id/evidence", async (req, res) => {
     measurement: body.measurement,
   };
 
-  if (analysisPermitted) {
-    item.machineObservation =
-      "Model observation was permitted but no media payload was transmitted in this request.";
-  }
-
-  const result = await mutateSession(req.params.id, (session) => ({
+  const result = await mutateSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    (session) => ({
     ...session,
     evidence: [...session.evidence, item],
-  }));
+    }),
+  );
   send(res, result);
 });
 
 sessionsRouter.post("/:id/analyze", async (req, res) => {
-  const result = await withSession(req.params.id, async (session) => ({
+  const result = await withSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    async (session) => ({
     status: 200,
     body: await buildPayload(session, { explain: true }),
-  }));
+    }),
+  );
   send(res, result);
 });
 
@@ -199,13 +257,20 @@ sessionsRouter.post("/:id/steps", async (req, res) => {
   if (!parsed.ok) return send(res, parsed.result);
 
   const { stepId, completed } = parsed.data;
+  if (!VALID_STEP_IDS.has(stepId)) {
+    return send(res, errorResult(422, "unknown_procedure_step"));
+  }
 
-  const result = await mutateSession(req.params.id, (session) => ({
+  const result = await mutateSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    (session) => ({
     ...session,
     completedStepIds: completed
       ? Array.from(new Set([...session.completedStepIds, stepId]))
       : session.completedStepIds.filter((value) => value !== stepId),
-  }));
+    }),
+  );
   send(res, result);
 });
 
@@ -214,8 +279,14 @@ sessionsRouter.post("/:id/outcome", async (req, res) => {
   if (!parsed.ok) return send(res, parsed.result);
 
   const body = parsed.data;
+  if (body.performedTestIds?.some((id) => !testById(id))) {
+    return send(res, errorResult(422, "unknown_test"));
+  }
 
-  const result = await mutateSession(req.params.id, (session) => ({
+  const result = await mutateSession(
+    req.params.id,
+    bearerToken(req.header("authorization")),
+    (session) => ({
     ...session,
     outcome: {
       resolved: body.resolved,
@@ -223,6 +294,7 @@ sessionsRouter.post("/:id/outcome", async (req, res) => {
       notes: body.notes,
       recordedAt: new Date().toISOString(),
     },
-  }));
+    }),
+  );
   send(res, result);
 });

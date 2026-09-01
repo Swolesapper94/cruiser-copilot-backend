@@ -84,3 +84,10 @@ export {
   type CrawlRunResult,
   type CrawlPageResult,
 } from "./crawler";
+
+export { EvidenceCatalog, evidenceCatalog } from "./catalog";
+export {
+  FORUM_SOURCE_REGISTRY,
+  registeredForumSource,
+  type RegisteredForumSource,
+} from "./source-registry";

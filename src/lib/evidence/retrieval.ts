@@ -1,5 +1,9 @@
-import type { DiagnosticCaseQuery, Vehicle } from "@/types";
-import { evaluateApplicability, type ApplicabilityResult } from "@/lib/retrieval/applicability";
+import type { DiagnosticCaseQuery } from "@/types";
+import {
+  evaluateApplicability,
+  type ApplicabilityResult,
+  type ApplicabilityVehicle,
+} from "@/lib/retrieval/applicability";
 import { semanticCandidates } from "@/lib/retrieval/semantic";
 
 import type { RetrievalChunk } from "./chunks";
@@ -19,7 +23,7 @@ import { EvidenceStore, evidenceStore } from "./store";
 const OEM_MAX_TIER = 3;
 
 export interface EvidenceRetrievalRequest {
-  vehicle: Vehicle;
+  vehicle: ApplicabilityVehicle;
   caseQuery?: DiagnosticCaseQuery;
   keywords?: string[];
   specificationSubject?: string;

@@ -12,12 +12,12 @@ This service owns everything that decides what the frontend shows: applicability
 4. **Media is described, never diagnosed**, and never moves a hypothesis ranking.
 5. **`confirmed` is never emitted** by this MVP.
 
-See [docs/SOURCE_POLICY.md](docs/SOURCE_POLICY.md), [docs/DIAGNOSTIC_RULES.md](docs/DIAGNOSTIC_RULES.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md), [docs/FORUM_INGESTION_AND_RAG.md](docs/FORUM_INGESTION_AND_RAG.md) and [docs/MVP_ACCEPTANCE_TESTS.md](docs/MVP_ACCEPTANCE_TESTS.md).
+See [docs/SOURCE_POLICY.md](docs/SOURCE_POLICY.md), [docs/DIAGNOSTIC_RULES.md](docs/DIAGNOSTIC_RULES.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md), [docs/FORUM_INGESTION_AND_RAG.md](docs/FORUM_INGESTION_AND_RAG.md), [docs/FORUM_SOURCE_REGISTER.md](docs/FORUM_SOURCE_REGISTER.md) and [docs/MVP_ACCEPTANCE_TESTS.md](docs/MVP_ACCEPTANCE_TESTS.md).
 
 ## Quick start
 
 ```bash
-npm install
+npm ci
 cp .env.example .env   # defaults to scripted mode, no credentials needed
 npm run dev             # listens on http://localhost:4000
 ```
@@ -48,8 +48,18 @@ Pair it with `cruiser-copilot-frontend` running on `http://localhost:3000` (its 
 | POST | `/api/sessions/:id/steps` | Toggle a repair-procedure step |
 | POST | `/api/sessions/:id/outcome` | Record the outcome |
 | GET | `/api/procedures/:id` | Fetch a guided procedure, optionally scoped to a session |
+| GET | `/api/ingestion/forum/sources` | Inspect the inactive source allow-list and policy state |
+| GET | `/api/ingestion/forum/schema` | Inspect the extraction/assessment contract |
+| POST | `/api/ingestion/forum/crawl` | Admin-only crawl of an approved registry source |
+| POST | `/api/ingestion/extractions` | Admin-only validation and storage of an extraction |
+| POST | `/api/ingestion/documents/:id/approve` | Admin-only human-review approval |
+| GET | `/api/ingestion/status` | Admin-only evidence and review-queue status |
 
-All state is server-derived — the client never sets `stage`, hypothesis scores, or which specification applies.
+`POST /api/sessions` returns a random `sessionAccessToken` exactly once. Every
+session-scoped route requires it as `Authorization: Bearer …`; the token is not
+accepted in a URL. Ingestion mutations require the separate
+`INGESTION_ADMIN_TOKEN`. All diagnostic state is server-derived — the client
+never sets `stage`, hypothesis scores, or which specification applies.
 
 ## Layout
 
@@ -73,4 +83,13 @@ docs/                    policy, data model, rules and acceptance tests
 
 ## Storage
 
-Sessions live in memory (`src/lib/store/index.ts`) by design — no diagnostic content or media is persisted or sent to a third party unless you explicitly enable a live model. `packages/database/schema.sql` is available if you want to persist sessions and a real source library, and `packages/database/evidence-schema.sql` adds the four-layer ingestion/evidence model (sources, snapshots, documents, claims, chunks, review queue) for when the corpus outgrows the in-memory `EvidenceStore`. Both apply cleanly to Supabase or any Postgres with `pgvector`.
+`SESSION_STORE=memory` is the default for disposable local sessions.
+`SESSION_STORE=file` atomically persists validated sessions and token hashes to
+`SESSION_STORE_PATH` for a single server process. Set `EVIDENCE_STORE_PATH` to
+persist validated extractions and human approvals. Neither file contains media
+bytes, and both runtime paths are gitignored.
+
+Use `packages/database/schema.sql` and
+`packages/database/evidence-schema.sql` (Postgres + pgvector) before running
+multiple API processes or indexing a large corpus. The JSON stores are not a
+distributed database.

@@ -27,6 +27,25 @@ export interface ApplicabilityCandidate {
   yearEnd?: number;
 }
 
+/** Generic identity shape used by source ingestion before product scoping. */
+export interface ApplicabilityVehicle {
+  id?: string;
+  manufacturer?: string;
+  modelName?: string;
+  submodel?: string;
+  series: string;
+  modelCode?: string;
+  chassisCode?: string;
+  productionYear?: number;
+  market?: string;
+  engineCode: string;
+  pumpModel?: string;
+  emissionsConfiguration?: string;
+  acsdConfiguration?: "present" | "absent" | "unknown";
+  modifications?: string[];
+  identificationConfidence?: "user-confirmed" | "inferred" | "unknown";
+}
+
 const SERIES_BY_MODEL_PREFIX: Record<string, Vehicle["series"]> = {
   HZJ7: "70",
   HDJ7: "70",
@@ -81,7 +100,7 @@ function compareList(
  */
 export function evaluateApplicability(
   passage: ApplicabilityCandidate,
-  vehicle: Vehicle,
+  vehicle: ApplicabilityVehicle,
 ): ApplicabilityResult {
   const acc = { unresolved: [] as string[], conflicting: [] as string[], matches: 0 };
 
@@ -132,7 +151,7 @@ export function evaluateApplicability(
 
   // Series is a coarse guard rail derived from the model codes on the passage.
   if (vehicle.series !== "unknown" && passage.modelCodes.length > 0) {
-    const passageSeries = new Set(
+    const passageSeries = new Set<string>(
       passage.modelCodes.map((code) => seriesForModelCode(code)),
     );
     passageSeries.delete("unknown");

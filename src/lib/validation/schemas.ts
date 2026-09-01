@@ -12,8 +12,8 @@ import { z } from "zod";
 /* Vehicle                                                             */
 /* ------------------------------------------------------------------ */
 
-export const seriesSchema = z.string().min(1).max(32);
-export const engineCodeSchema = z.string().min(1).max(64);
+export const seriesSchema = z.enum(["70", "80", "unknown"]);
+export const engineCodeSchema = z.enum(["1HZ", "1HD-T", "unknown"]);
 export const acsdSchema = z.enum(["present", "absent", "unknown"]);
 export const identificationConfidenceSchema = z.enum([
   "user-confirmed",
@@ -94,6 +94,7 @@ export const sourceTypeSchema = z.enum([
   "forum",
   "general",
 ]);
+export type SourceType = z.infer<typeof sourceTypeSchema>;
 
 export const licenseStatusSchema = z.enum([
   "owned",
@@ -476,6 +477,7 @@ export const postEvidenceRequestSchema = z.object({
   fileName: z.string().max(240).optional(),
   mimeType: z.string().max(120).optional(),
   sizeBytes: z.number().int().nonnegative().optional(),
+  durationSeconds: z.number().positive().optional(),
   measurement: z
     .object({
       key: z.string().min(1),

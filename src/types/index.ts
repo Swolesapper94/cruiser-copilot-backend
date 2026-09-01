@@ -3,6 +3,7 @@ export type {
   DiagnosticCaseQuery,
   ApplicabilityField,
   SourceDocument,
+  SourceType,
   SourcePassage,
   Citation,
   SourceConflict,

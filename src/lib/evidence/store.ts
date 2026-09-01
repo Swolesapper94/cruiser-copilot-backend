@@ -105,6 +105,7 @@ export class EvidenceStore {
     if (!reviewer.trim()) return false;
     if (!this.extractions.has(documentId)) return false;
     this.published.add(documentId);
+    this.openFlags.delete(documentId);
     return true;
   }
 

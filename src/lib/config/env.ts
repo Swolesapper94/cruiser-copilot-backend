@@ -15,7 +15,25 @@ const boolish = z
   .optional()
   .transform((value) => value === "true" || value === "1");
 
+const optionalString = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().optional(),
+);
+
+const optionalSecret = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().min(24).optional(),
+);
+
+const optionalPositiveInteger = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.coerce.number().int().positive().optional(),
+);
+
 const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().int().positive().max(65_535).default(4000),
+  CORS_ORIGIN: optionalString,
   DIAGNOSTIC_MODE: z.enum(["scripted", "live"]).default("scripted"),
 
   LLM_PROVIDER: z.string().optional(),
@@ -27,7 +45,7 @@ const envSchema = z.object({
   EMBEDDING_PROVIDER: z.string().optional(),
   EMBEDDING_API_KEY: z.string().optional(),
   EMBEDDING_MODEL: z.string().optional(),
-  EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().optional(),
+  EMBEDDING_DIMENSIONS: optionalPositiveInteger,
 
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
@@ -37,12 +55,17 @@ const envSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().positive().default(25),
   MAX_VIDEO_SECONDS: z.coerce.number().positive().default(30),
 
-  INGESTION_USER_AGENT: z
-    .string()
-    .default("CruiserCopilotBot/0.1 (+contact: set INGESTION_USER_AGENT)"),
+  INGESTION_USER_AGENT: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().default("CruiserCopilotBot/0.1 (+contact: set INGESTION_USER_AGENT)"),
+  ),
   INGESTION_REQUEST_DELAY_MS: z.coerce.number().int().nonnegative().default(5000),
   INGESTION_MAX_PAGES_PER_RUN: z.coerce.number().int().positive().default(25),
-  INGESTION_ADMIN_TOKEN: z.string().min(24).optional(),
+  INGESTION_ADMIN_TOKEN: optionalSecret,
+
+  SESSION_STORE: z.enum(["memory", "file"]).default("memory"),
+  SESSION_STORE_PATH: z.string().min(1).default("data/runtime/sessions.json"),
+  EVIDENCE_STORE_PATH: optionalString,
 
   ENABLE_LIVE_LLM: boolish,
   ENABLE_SEMANTIC_RETRIEVAL: boolish,
@@ -51,10 +74,14 @@ const envSchema = z.object({
 });
 
 const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  const invalidKeys = [
+    ...new Set(parsed.error.issues.map((issue) => String(issue.path[0] ?? "environment"))),
+  ];
+  throw new Error(`Invalid environment configuration: ${invalidKeys.join(", ")}`);
+}
 
-const fallback = envSchema.parse({});
-
-export const env = parsed.success ? parsed.data : fallback;
+export const env = parsed.data;
 
 /** Live mode requires an explicit flag AND a complete credential set. */
 export function liveModelAvailable(): boolean {

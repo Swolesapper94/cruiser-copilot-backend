@@ -24,6 +24,7 @@ service-account*.json
 data/manuals/
 data/sources/
 data/raw/
+data/runtime/
 **/*.pdf
 **/manuals/
 *.epc

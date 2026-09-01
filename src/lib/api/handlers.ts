@@ -8,8 +8,10 @@ import {
 } from "@/lib/diagnostic-policy";
 import { retrieve } from "@/lib/retrieval";
 import { sessionStore } from "@/lib/store";
+import { API_CONTRACT_VERSION } from "./contract";
 
 export interface SessionPayload {
+  contractVersion: typeof API_CONTRACT_VERSION;
   session: DiagnosticSession;
   update: DiagnosticUpdate;
 }
@@ -44,7 +46,9 @@ export async function buildPayload(
   options: { explain?: boolean } = {},
 ): Promise<SessionPayload> {
   const update = evaluateSession(session);
-  if (!options.explain) return { session, update };
+  if (!options.explain) {
+    return { contractVersion: API_CONTRACT_VERSION, session, update };
+  }
 
   const retrieval = retrieve({
     vehicle: session.vehicle,
@@ -58,14 +62,25 @@ export async function buildPayload(
     passages: retrieval.passages,
   });
 
-  return { session, update: { ...update, ...explained } };
+  return {
+    contractVersion: API_CONTRACT_VERSION,
+    session,
+    update: { ...update, ...explained },
+  };
+}
+
+export function bearerToken(header: string | undefined): string | undefined {
+  if (!header?.startsWith("Bearer ")) return undefined;
+  const token = header.slice("Bearer ".length).trim();
+  return token || undefined;
 }
 
 export async function withSession(
   id: string,
+  accessToken: string | undefined,
   handler: (session: DiagnosticSession) => Promise<ApiResult>,
 ): Promise<ApiResult> {
-  const session = await sessionStore.get(id);
+  const session = await sessionStore.authorize(id, accessToken);
   if (!session) return errorResult(404, "session_not_found");
   return handler(session);
 }
@@ -76,9 +91,12 @@ export async function withSession(
  */
 export async function mutateSession(
   id: string,
+  accessToken: string | undefined,
   mutate: (session: DiagnosticSession) => DiagnosticSession,
   options: { explain?: boolean } = {},
 ): Promise<ApiResult> {
+  const authorized = await sessionStore.authorize(id, accessToken);
+  if (!authorized) return errorResult(404, "session_not_found");
   const updated = await sessionStore.update(id, (current) => {
     const next = mutate(current);
     return { ...next, stage: evaluateSession(next).stage };

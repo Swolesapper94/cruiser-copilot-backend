@@ -24,6 +24,7 @@ export interface RetrievalChunk {
   id: string;
   chunkKind: ChunkKind;
   documentId: string;
+  sourceKind: string;
   /** The unit a citation should open. */
   contentUnitId?: string;
   citationUrl: string;
@@ -108,6 +109,7 @@ export function buildRetrievalChunks(
   );
 
   const base = {
+    sourceKind: normalized.sourceKind,
     authorityTier: normalized.authorityTier,
     schemaVersion: normalized.schemaVersion,
     extractorVersion: normalized.extractorVersion,
