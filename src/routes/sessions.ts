@@ -77,7 +77,14 @@ sessionsRouter.patch("/:id/vehicle", async (req, res) => {
     }
 
     const userSuppliedIdentity =
-      patch.series !== undefined || patch.engineCode !== undefined;
+      patch.manufacturer !== undefined ||
+      patch.modelName !== undefined ||
+      patch.submodel !== undefined ||
+      patch.vin !== undefined ||
+      patch.series !== undefined ||
+      patch.modelCode !== undefined ||
+      patch.chassisCode !== undefined ||
+      patch.engineCode !== undefined;
 
     return {
       ...session,

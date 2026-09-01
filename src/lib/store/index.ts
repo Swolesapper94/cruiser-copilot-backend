@@ -61,6 +61,10 @@ export const sessionStore: SessionStore =
 export function emptyVehicle(id: string): Vehicle {
   return {
     id,
+    // Cruiser Copilot is currently product-scoped to Toyota Land Cruisers.
+    // A multi-make deployment should collect or decode these instead.
+    manufacturer: "Toyota",
+    modelName: "Land Cruiser",
     series: "unknown",
     engineCode: "unknown",
     modifications: [],

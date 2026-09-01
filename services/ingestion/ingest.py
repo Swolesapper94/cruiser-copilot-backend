@@ -15,6 +15,8 @@ This tool deliberately does very little automatically:
 
 Usage
 -----
+    python ingest.py evidence-plan --input manual.pdf --out extraction.json \
+        --title "Repair Manual" --manufacturer Toyota --document-number RM617E
     python ingest.py plan   --input manual.pdf --out plan.json
     python ingest.py import --plan plan.json --metadata doc.json --out store.json
     python ingest.py verify --store store.json
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import datetime
 import hashlib
 import json
 import pathlib
@@ -68,6 +71,17 @@ def read_pages(path: pathlib.Path) -> list[tuple[int, str]]:
     """Returns (page_number, text) pairs. Plain text files are a single page."""
     if path.suffix.lower() == ".pdf":
         try:
+            import pdfplumber
+
+            with pdfplumber.open(path) as pdf:
+                return [
+                    (index + 1, (page.extract_text() or "").strip())
+                    for index, page in enumerate(pdf.pages)
+                ]
+        except ImportError:
+            pass
+
+        try:
             from pypdf import PdfReader
         except ImportError as exc:  # pragma: no cover - environment dependent
             raise IngestionError(
@@ -82,6 +96,159 @@ def read_pages(path: pathlib.Path) -> list[tuple[int, str]]:
         ]
 
     return [(1, path.read_text(encoding="utf-8", errors="replace"))]
+
+
+# ---------------------------------------------------------------------------
+# Source-neutral evidence plan
+# ---------------------------------------------------------------------------
+
+
+MANUAL_BLOCK_START = re.compile(
+    r"^(?:"
+    r"\d+\.\s+|"
+    r"\([a-z0-9]+\)\s+|"
+    r"(?:NOTICE|WARNING|CAUTION|HINT|Torque|Plunger stroke|SST)\s*:?"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def classify_manual_block(text: str) -> str:
+    upper = text.upper()
+    if upper.startswith("WARNING") or upper.startswith("CAUTION"):
+        return "warning"
+    if upper.startswith("NOTICE"):
+        return "notice"
+    if re.match(r"^\d+\.\s+", text):
+        return "procedure_step"
+    if re.search(r"\b(?:N[·.]?m|FT[·.]?LBF|MM|IN\.)\b", text, re.IGNORECASE):
+        return "specification"
+    if text == upper and len(text) <= 160 and any(character.isalpha() for character in text):
+        return "heading"
+    return "paragraph"
+
+
+def manual_blocks(page_number: int, text: str) -> list[dict[str, Any]]:
+    """Preserve logical lines and step boundaries instead of token windows."""
+    cleaned_lines = [" ".join(line.split()) for line in text.splitlines()]
+    cleaned_lines = [line for line in cleaned_lines if line]
+    groups: list[str] = []
+    current = ""
+
+    for line in cleaned_lines:
+        starts_block = bool(MANUAL_BLOCK_START.match(line))
+        is_heading = (
+            line == line.upper()
+            and len(line) <= 160
+            and any(character.isalpha() for character in line)
+        )
+        if current and (starts_block or is_heading):
+            groups.append(current)
+            current = line
+        else:
+            current = f"{current} {line}".strip()
+    if current:
+        groups.append(current)
+
+    return [
+        {
+            "local_id": f"page-{page_number}-block-{index + 1}",
+            "block_kind": classify_manual_block(group),
+            "text": group,
+            "raw_locator": {"pageNumber": page_number, "blockIndex": index},
+            "quoted_unit_local_id": None,
+            "ocr_derived": False,
+        }
+        for index, group in enumerate(groups)
+    ]
+
+
+def build_evidence_plan(
+    input_path: pathlib.Path,
+    *,
+    title: str,
+    source_kind: str,
+    manufacturer: str | None,
+    document_number: str | None,
+) -> dict[str, Any]:
+    if source_kind not in AUTHORITY_BY_SOURCE_TYPE:
+        raise IngestionError(f"Unsupported source kind {source_kind!r}.")
+    canonical_url = input_path.resolve().as_uri()
+    content_hash = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    retrieved_at = datetime.datetime.fromtimestamp(
+        input_path.stat().st_mtime, tz=datetime.timezone.utc
+    ).isoformat().replace("+00:00", "Z")
+    pages = read_pages(input_path)
+
+    units = []
+    for page_number, page_text in pages:
+        blocks = manual_blocks(page_number, page_text)
+        if not blocks:
+            continue
+        units.append(
+            {
+                "local_id": f"page-{page_number}",
+                "unit_kind": "manual_page",
+                "external_id": str(page_number),
+                "sequence_number": page_number,
+                "parent_unit_local_id": None,
+                "title": f"Page {page_number}",
+                "author_external_id": None,
+                "author_display_name": manufacturer,
+                "created_at_source": None,
+                "edited_at_source": None,
+                "is_primary": page_number == 1,
+                "is_moderator": None,
+                "reaction_count": None,
+                "blocks": blocks,
+            }
+        )
+
+    return {
+        "schema_version": "evidence-extraction.v2",
+        "extractor_version": "manual-structure.2",
+        "source": {
+            "name": title,
+            "base_url": input_path.resolve().parent.as_uri(),
+            "source_kind": source_kind,
+            "authority_tier": AUTHORITY_BY_SOURCE_TYPE[source_kind],
+        },
+        "snapshot": {
+            "canonical_url": canonical_url,
+            "retrieved_url": canonical_url,
+            "retrieved_at": retrieved_at,
+            "http_status": 200,
+            "content_hash": content_hash,
+        },
+        "document": {
+            "title": title,
+            "document_kind": "manual",
+            "canonical_url": canonical_url,
+            "external_id": document_number,
+            "manufacturer": manufacturer,
+            "document_number": document_number,
+            "edition": None,
+            "publication_date": None,
+            "created_at_source": None,
+            "updated_at_source": None,
+            "language": "en",
+        },
+        "content_units": units,
+        "media": [],
+        "applicability": [],
+        "vehicle_mentions": [],
+        "repair_cases": [],
+        "observations": [],
+        "claims": [],
+        "claim_relations": [],
+        "procedure_fragments": [],
+        "review_flags": [],
+        "review_note": (
+            "Structure only. Add one atomic claim for each independently "
+            "applicable value and cite its source block. Do not combine values "
+            "for different engines, markets or configurations."
+        ),
+    }
 
 
 PARAGRAPH_SPLIT = re.compile(r"\n\s*\n")
@@ -322,6 +489,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     sub = parser.add_subparsers(dest="command", required=True)
 
+    evidence_plan_cmd = sub.add_parser(
+        "evidence-plan",
+        help="Create a source-neutral, page-aware evidence extraction skeleton",
+    )
+    evidence_plan_cmd.add_argument("--input", required=True, type=pathlib.Path)
+    evidence_plan_cmd.add_argument("--out", required=True, type=pathlib.Path)
+    evidence_plan_cmd.add_argument("--title", required=True)
+    evidence_plan_cmd.add_argument(
+        "--source-kind",
+        choices=("service_bulletin", "oem_manual", "oem_technical"),
+        default="oem_technical",
+    )
+    evidence_plan_cmd.add_argument("--manufacturer")
+    evidence_plan_cmd.add_argument("--document-number")
+
     plan_cmd = sub.add_parser("plan", help="Chunk a document into a reviewable plan")
     plan_cmd.add_argument("--input", required=True, type=pathlib.Path)
     plan_cmd.add_argument("--out", required=True, type=pathlib.Path)
@@ -337,6 +519,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "evidence-plan":
+            plan = build_evidence_plan(
+                args.input,
+                title=args.title,
+                source_kind=args.source_kind,
+                manufacturer=args.manufacturer,
+                document_number=args.document_number,
+            )
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(
+                json.dumps(plan, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+            block_count = sum(
+                len(unit["blocks"]) for unit in plan["content_units"]
+            )
+            print(
+                f"Wrote {len(plan['content_units'])} page units and "
+                f"{block_count} source blocks to {args.out}. "
+                "Add applicability and atomic claims before publication."
+            )
+            return 0
+
         if args.command == "plan":
             plan = build_plan(args.input)
             args.out.parent.mkdir(parents=True, exist_ok=True)

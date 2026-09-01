@@ -15,19 +15,46 @@ session) is parsed, not cast.
 
 ```ts
 Vehicle {
-  id, series: "70" | "80" | "unknown",
-  modelCode?, chassisCode?, productionYear?, market?,
-  engineCode: "1HZ" | "1HD-T" | "unknown",
-  transmission?, pumpModel?,
+  id, manufacturer?, modelName?, submodel?, vin?, series,
+  modelCode?, chassisCode?, productionYear?, productionDate?, market?,
+  engineCode, transmission?, pumpModel?, emissionsConfiguration?,
   acsdConfiguration?: "present" | "absent" | "unknown",
   modifications: string[],
   identificationConfidence: "user-confirmed" | "inferred" | "unknown"
 }
 ```
 
-`APPLICABILITY_FIELDS` lists the seven fields that decide which published value
-applies: `series`, `modelCode`, `productionYear`, `market`, `engineCode`,
-`pumpModel`, `acsdConfiguration`.
+`APPLICABILITY_FIELDS` includes identity, production, market, engine and
+configuration-sensitive fields. A visual inference is never equivalent to a VIN
+decode or user confirmation.
+
+## Diagnostic retrieval query
+
+```
+DiagnosticCaseQuery {
+  vehicle, complaint, symptomTerms[], affectedSystems[], diagnosticCodes[],
+  userObservations[], machineObservations[],
+  requestedSpecificationSubject?, missingApplicabilityFields[]
+}
+```
+
+The complaint acts like an incoming service ticket. Structured identity fields
+filter and rerank candidates; symptoms and observations drive exact and semantic
+retrieval. User statements and machine observations remain separate.
+
+## Source-neutral evidence extraction
+
+`evidence-extraction.v2` uses `content_units` instead of requiring forum posts:
+
+```
+Document -> ContentUnit (forum_post|manual_page|manual_section|...)
+         -> Block (heading|paragraph|notice|warning|specification|procedure_step|...)
+         -> Observation / atomic Claim / ProcedureFragment
+```
+
+Every independently applicable numeric range is a separate claim with
+`value_numeric_min`, `value_numeric_max`, a verbatim unit, applicability, claim
+basis and a source-block citation.
 
 ## Sources
 

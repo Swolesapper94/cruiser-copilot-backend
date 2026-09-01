@@ -81,6 +81,8 @@ describe("evaluateApplicability", () => {
 describe("missingVehicleFields", () => {
   it("lists every applicability field that is still unknown", () => {
     expect(missingVehicleFields(baseVehicle)).toEqual([
+      "manufacturer",
+      "modelName",
       "modelCode",
       "productionYear",
       "market",
@@ -93,6 +95,8 @@ describe("missingVehicleFields", () => {
     expect(
       missingVehicleFields({
         ...baseVehicle,
+        manufacturer: "Toyota",
+        modelName: "Land Cruiser",
         modelCode: "HDJ80",
         productionYear: 1995,
         market: "EU",

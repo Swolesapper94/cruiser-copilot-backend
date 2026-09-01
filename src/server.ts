@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { proceduresRouter } from "@/routes/procedures";
 import { sessionsRouter } from "@/routes/sessions";
+import { ingestionRouter } from "@/routes/ingestion";
 
 const PORT = Number(process.env.PORT ?? 4000);
 
@@ -34,6 +35,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/sessions", sessionsRouter);
 app.use("/api/procedures", proceduresRouter);
+app.use("/api/ingestion", ingestionRouter);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: "not_found" } });

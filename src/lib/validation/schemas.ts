@@ -12,8 +12,8 @@ import { z } from "zod";
 /* Vehicle                                                             */
 /* ------------------------------------------------------------------ */
 
-export const seriesSchema = z.enum(["70", "80", "unknown"]);
-export const engineCodeSchema = z.enum(["1HZ", "1HD-T", "unknown"]);
+export const seriesSchema = z.string().min(1).max(32);
+export const engineCodeSchema = z.string().min(1).max(64);
 export const acsdSchema = z.enum(["present", "absent", "unknown"]);
 export const identificationConfidenceSchema = z.enum([
   "user-confirmed",
@@ -23,14 +23,20 @@ export const identificationConfidenceSchema = z.enum([
 
 export const vehicleSchema = z.object({
   id: z.string().min(1),
+  manufacturer: z.string().max(64).optional(),
+  modelName: z.string().max(80).optional(),
+  submodel: z.string().max(80).optional(),
+  vin: z.string().max(32).optional(),
   series: seriesSchema,
   modelCode: z.string().max(32).optional(),
   chassisCode: z.string().max(32).optional(),
   productionYear: z.number().int().min(1960).max(2100).optional(),
+  productionDate: z.string().date().optional(),
   market: z.string().max(64).optional(),
   engineCode: engineCodeSchema,
   transmission: z.string().max(64).optional(),
   pumpModel: z.string().max(64).optional(),
+  emissionsConfiguration: z.string().max(120).optional(),
   acsdConfiguration: acsdSchema.optional(),
   modifications: z.array(z.string().max(160)).default([]),
   identificationConfidence: identificationConfidenceSchema,
@@ -38,14 +44,38 @@ export const vehicleSchema = z.object({
 
 export type Vehicle = z.infer<typeof vehicleSchema>;
 
+/**
+ * Structured query sent to evidence retrieval. The complaint and media-derived
+ * observations remain distinct so a model observation cannot overwrite what
+ * the user actually reported.
+ */
+export const diagnosticCaseQuerySchema = z.object({
+  vehicle: vehicleSchema,
+  complaint: z.string().min(1).max(4000),
+  symptomTerms: z.array(z.string().min(1).max(120)).default([]),
+  affectedSystems: z.array(z.string().min(1).max(120)).default([]),
+  diagnosticCodes: z.array(z.string().min(1).max(64)).default([]),
+  userObservations: z.array(z.string().min(1).max(500)).default([]),
+  machineObservations: z.array(z.string().min(1).max(500)).default([]),
+  requestedSpecificationSubject: z.string().max(160).optional(),
+  missingApplicabilityFields: z.array(z.string().min(1)).default([]),
+});
+
+export type DiagnosticCaseQuery = z.infer<typeof diagnosticCaseQuerySchema>;
+
 /** Fields that must be known before an exact specification may be selected. */
 export const APPLICABILITY_FIELDS = [
+  "manufacturer",
+  "modelName",
+  "submodel",
   "series",
   "modelCode",
   "productionYear",
+  "productionDate",
   "market",
   "engineCode",
   "pumpModel",
+  "emissionsConfiguration",
   "acsdConfiguration",
 ] as const;
 
@@ -100,12 +130,17 @@ export const sourcePassageSchema = z.object({
   pageNumber: z.number().int().positive().optional(),
   section: z.string().optional(),
   postNumber: z.string().optional(),
+  manufacturers: z.array(z.string()).default([]),
+  modelNames: z.array(z.string()).default([]),
+  submodels: z.array(z.string()).default([]),
   modelCodes: z.array(z.string()).default([]),
   engineCodes: z.array(z.string()).default([]),
   markets: z.array(z.string()).default([]),
   yearStart: z.number().int().optional(),
   yearEnd: z.number().int().optional(),
   pumpModels: z.array(z.string()).default([]),
+  acsdStates: z.array(acsdSchema).default([]),
+  emissionsConfigurations: z.array(z.string()).default([]),
   diagramRef: z.string().optional(),
   /** Free-form keywords used by the exact-match stage of retrieval. */
   keywords: z.array(z.string()).default([]),

@@ -1,4 +1,4 @@
-import type { SourcePassage, Vehicle } from "@/types";
+import type { Vehicle } from "@/types";
 
 export type ApplicabilityVerdict = "applicable" | "not-applicable" | "unresolved";
 
@@ -10,6 +10,21 @@ export interface ApplicabilityResult {
   conflictingFields: string[];
   /** How many dimensions matched exactly. Used for reranking. */
   matchStrength: number;
+}
+
+export interface ApplicabilityCandidate {
+  completeness?: "unknown" | "partial" | "sufficient";
+  manufacturers?: string[];
+  modelNames?: string[];
+  submodels?: string[];
+  modelCodes: string[];
+  engineCodes: string[];
+  markets: string[];
+  pumpModels: string[];
+  acsdStates?: Array<"present" | "absent" | "unknown">;
+  emissionsConfigurations?: string[];
+  yearStart?: number;
+  yearEnd?: number;
 }
 
 const SERIES_BY_MODEL_PREFIX: Record<string, Vehicle["series"]> = {
@@ -65,15 +80,19 @@ function compareList(
  * allowed to treat an unresolved passage as a confirmed specification.
  */
 export function evaluateApplicability(
-  passage: Pick<
-    SourcePassage,
-    "modelCodes" | "engineCodes" | "markets" | "pumpModels" | "yearStart" | "yearEnd"
-  >,
+  passage: ApplicabilityCandidate,
   vehicle: Vehicle,
 ): ApplicabilityResult {
   const acc = { unresolved: [] as string[], conflicting: [] as string[], matches: 0 };
 
+  if (passage.completeness && passage.completeness !== "sufficient") {
+    acc.unresolved.push("documentApplicability");
+  }
+
   const knownModelCode = vehicle.modelCode ?? vehicle.chassisCode;
+  compareList(passage.manufacturers ?? [], vehicle.manufacturer, "manufacturer", acc);
+  compareList(passage.modelNames ?? [], vehicle.modelName, "modelName", acc);
+  compareList(passage.submodels ?? [], vehicle.submodel, "submodel", acc);
   compareList(passage.modelCodes, knownModelCode, "modelCode", acc);
   compareList(
     passage.engineCodes,
@@ -83,6 +102,18 @@ export function evaluateApplicability(
   );
   compareList(passage.markets, vehicle.market, "market", acc);
   compareList(passage.pumpModels, vehicle.pumpModel, "pumpModel", acc);
+  compareList(
+    passage.emissionsConfigurations ?? [],
+    vehicle.emissionsConfiguration,
+    "emissionsConfiguration",
+    acc,
+  );
+  compareList(
+    passage.acsdStates ?? [],
+    vehicle.acsdConfiguration,
+    "acsdConfiguration",
+    acc,
+  );
 
   const hasYearConstraint =
     passage.yearStart !== undefined || passage.yearEnd !== undefined;
@@ -125,6 +156,8 @@ export function evaluateApplicability(
 /** Applicability fields still missing from the vehicle record. */
 export function missingVehicleFields(vehicle: Vehicle): string[] {
   const missing: string[] = [];
+  if (!vehicle.manufacturer) missing.push("manufacturer");
+  if (!vehicle.modelName) missing.push("modelName");
   if (vehicle.series === "unknown") missing.push("series");
   if (!vehicle.modelCode && !vehicle.chassisCode) missing.push("modelCode");
   if (vehicle.productionYear === undefined) missing.push("productionYear");

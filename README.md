@@ -12,7 +12,7 @@ This service owns everything that decides what the frontend shows: applicability
 4. **Media is described, never diagnosed**, and never moves a hypothesis ranking.
 5. **`confirmed` is never emitted** by this MVP.
 
-See [docs/SOURCE_POLICY.md](docs/SOURCE_POLICY.md), [docs/DIAGNOSTIC_RULES.md](docs/DIAGNOSTIC_RULES.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md) and [docs/MVP_ACCEPTANCE_TESTS.md](docs/MVP_ACCEPTANCE_TESTS.md).
+See [docs/SOURCE_POLICY.md](docs/SOURCE_POLICY.md), [docs/DIAGNOSTIC_RULES.md](docs/DIAGNOSTIC_RULES.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md), [docs/FORUM_INGESTION_AND_RAG.md](docs/FORUM_INGESTION_AND_RAG.md) and [docs/MVP_ACCEPTANCE_TESTS.md](docs/MVP_ACCEPTANCE_TESTS.md).
 
 ## Quick start
 
@@ -57,11 +57,13 @@ All state is server-derived — the client never sets `stage`, hypothesis scores
 src/
   lib/validation/     zod schemas — the single source of truth for shapes
   lib/retrieval/       applicability, authority ranking, conflict detection
+  lib/evidence/         forum ingestion, extraction contract, evidence RAG
   lib/diagnostic-policy/  questions, scoring rules, test selection, engine
   lib/procedures/       guided repair procedures
   lib/ai/               model adapter, prompts, output guards
   lib/api/handlers.ts   framework-agnostic request/response helpers
   routes/                Express routers
+  scripts/evidence-cli.ts  offline validate/parse CLI for ingested evidence
   server.ts              Express bootstrap
 data/evaluation/         labelled fixtures used to regression-check the rules
 packages/database/       optional Postgres + pgvector schema
@@ -71,4 +73,4 @@ docs/                    policy, data model, rules and acceptance tests
 
 ## Storage
 
-Sessions live in memory (`src/lib/store/index.ts`) by design — no diagnostic content or media is persisted or sent to a third party unless you explicitly enable a live model. `packages/database/schema.sql` is available if you want to persist sessions and a real source library.
+Sessions live in memory (`src/lib/store/index.ts`) by design — no diagnostic content or media is persisted or sent to a third party unless you explicitly enable a live model. `packages/database/schema.sql` is available if you want to persist sessions and a real source library, and `packages/database/evidence-schema.sql` adds the four-layer ingestion/evidence model (sources, snapshots, documents, claims, chunks, review queue) for when the corpus outgrows the in-memory `EvidenceStore`. Both apply cleanly to Supabase or any Postgres with `pgvector`.

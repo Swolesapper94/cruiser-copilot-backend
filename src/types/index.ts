@@ -1,5 +1,6 @@
 export type {
   Vehicle,
+  DiagnosticCaseQuery,
   ApplicabilityField,
   SourceDocument,
   SourcePassage,

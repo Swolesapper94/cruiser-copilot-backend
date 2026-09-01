@@ -19,6 +19,34 @@ pip install -r requirements.txt   # only needed for PDF input
 
 ## Three steps, on purpose
 
+## Preferred: source-neutral evidence plan
+
+For the v2 evidence pipeline, create page-aware source blocks first:
+
+```bash
+python ingest.py evidence-plan \
+  --input ~/Documents/my-manual.pdf \
+  --out extraction.json \
+  --title "Injection Timing" \
+  --manufacturer Toyota \
+  --document-number RM617E \
+  --source-kind oem_technical
+```
+
+The output uses `evidence-extraction.v2` and can be checked with:
+
+```bash
+npm run evidence -- validate extraction.json
+```
+
+The initial result intentionally contains no semantic claims. Reviewers or an
+extraction model add applicability, atomic claims and procedure fragments. A
+published range is one claim with `value_numeric_min` and
+`value_numeric_max`; values for different engines, markets or configurations
+must be separate claims even when printed in the same source block.
+
+The legacy passage-store flow below remains available during migration.
+
 ### 1. Plan
 
 ```bash

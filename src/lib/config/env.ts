@@ -37,9 +37,17 @@ const envSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().positive().default(25),
   MAX_VIDEO_SECONDS: z.coerce.number().positive().default(30),
 
+  INGESTION_USER_AGENT: z
+    .string()
+    .default("CruiserCopilotBot/0.1 (+contact: set INGESTION_USER_AGENT)"),
+  INGESTION_REQUEST_DELAY_MS: z.coerce.number().int().nonnegative().default(5000),
+  INGESTION_MAX_PAGES_PER_RUN: z.coerce.number().int().positive().default(25),
+  INGESTION_ADMIN_TOKEN: z.string().min(24).optional(),
+
   ENABLE_LIVE_LLM: boolish,
   ENABLE_SEMANTIC_RETRIEVAL: boolish,
   ENABLE_MEDIA_ANALYSIS: boolish,
+  ENABLE_FORUM_INGESTION: boolish,
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -73,6 +81,20 @@ export function activeMode(): "scripted" | "live" {
   return liveModelAvailable() ? "live" : "scripted";
 }
 
+/**
+ * Fetching third-party pages is off unless it is turned on deliberately.
+ * Per-source terms review is a separate, additional gate — see
+ * `assertFetchAllowed` in src/lib/evidence/adapters.ts.
+ */
+export function forumIngestionEnabled(): boolean {
+  return Boolean(env.ENABLE_FORUM_INGESTION);
+}
+
+export function ingestionAdminAuthorized(header: string | undefined): boolean {
+  if (!env.INGESTION_ADMIN_TOKEN || !header?.startsWith("Bearer ")) return false;
+  return header.slice("Bearer ".length) === env.INGESTION_ADMIN_TOKEN;
+}
+
 export const uploadLimits = {
   maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
   maxVideoSeconds: env.MAX_VIDEO_SECONDS,
@@ -86,5 +108,5 @@ export const uploadLimits = {
     "audio/mpeg",
     "audio/mp4",
     "audio/wav",
-  ] as const,
+  ] as readonly string[],
 };
